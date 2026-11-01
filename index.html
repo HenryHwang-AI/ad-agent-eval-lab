@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>广告 Agent 评测台 · Ad Agent Eval Lab</title>
+  <meta name="description" content="HenryHwang-AI 的 AI PM 作品：用合成广告数据离线评测三种 Agent 架构。对照输出、延迟、成本、引用覆盖和幻觉，并用字典序决定能不能投放。">
+  <meta name="theme-color" content="#07080f">
+  <meta name="color-scheme" content="dark">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect rx='14' width='64' height='64' fill='%2307080f'/%3E%3Cpath d='M14 42V18h8l10 16 10-16h8v24h-7V28l-9 14h-4l-9-14v14z' fill='%2322d3ee'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip" href="#task">跳到评测台</a>
+  <header class="site-header">
+    <div class="wrap header-row">
+      <div>
+        <div class="brand">
+          <div class="mark" aria-hidden="true">AEL</div>
+          <div>
+            <p class="eyebrow">HenryHwang-AI · AI PM Portfolio</p>
+            <h1>广告 Agent 评测台</h1>
+          </div>
+        </div>
+        <p class="lede">把「文案好不好」拆成能不能投放。同一条合成简报上，对照三种架构的输出、延迟、token 成本、引用覆盖和幻觉；偏好票默认盲测。全部在浏览器里完成，不需要 API Key。</p>
+      </div>
+      <div class="header-actions">
+        <div class="pill-row" aria-label="运行条件">
+          <span class="pill">离线可用</span>
+          <span class="pill">无 API Key</span>
+          <span class="pill">合成数据</span>
+          <span class="pill">MIT</span>
+        </div>
+        <p class="fine" id="header-status">样本已装载</p>
+      </div>
+    </div>
+  </header>
+
+  <nav class="subnav" aria-label="页面章节">
+    <div class="wrap">
+      <ul>
+        <li><a href="#task"><span class="idx">01</span>任务</a></li>
+        <li><a href="#compare"><span class="idx">02</span>对照</a></li>
+        <li><a href="#score"><span class="idx">03</span>记分</a></li>
+        <li><a href="#timeline"><span class="idx">04</span>迭代</a></li>
+        <li><a href="#decision"><span class="idx">05</span>产品决策</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main class="wrap">
+    <section id="task" aria-labelledby="task-title">
+      <div class="section-head">
+        <div>
+          <p class="kicker">01 · Brief</p>
+          <h2 id="task-title">选一条任务</h2>
+          <p>四条简报覆盖获客、筛选、合规和多语言。右侧是模型看得到的输入。金标和评分只在评测台出现，不会写进提示词。</p>
+        </div>
+      </div>
+      <div class="task-layout">
+        <div class="brief-list" id="brief-list" role="radiogroup" aria-label="评测任务"></div>
+        <article class="card card-pad" id="brief-detail"></article>
+      </div>
+    </section>
+
+    <section id="compare" aria-labelledby="compare-title">
+      <div class="section-head">
+        <div>
+          <p class="kicker">02 · Variants</p>
+          <h2 id="compare-title">变体对照</h2>
+          <p>Baseline 单轮生成，Tool-augmented 会查库但不过滤文档状态，Multi-step + retrieval 先规划槽位，只采用 active 文档，再批评一次。点亮青色下划线可以打开引用原文；红色底是幻觉或冲突。</p>
+        </div>
+      </div>
+      <div class="toolbar">
+        <div class="checks" id="agent-checks" role="group" aria-label="参与对照的架构"></div>
+        <div class="cluster">
+          <button class="btn primary" id="replay" type="button">回放评测轨迹</button>
+          <label class="fine" for="export-scope">导出范围</label>
+          <select class="select" id="export-scope">
+            <option value="brief">当前任务</option>
+            <option value="all">四条任务</option>
+          </select>
+          <button class="btn" id="export" type="button">导出 CSV</button>
+        </div>
+      </div>
+      <ol class="log" id="run-log" aria-live="polite"></ol>
+      <div class="compare-grid" id="compare-grid"></div>
+      <p class="legend" aria-hidden="true">
+        <span><i style="background:#34d399"></i>槽位对齐</span>
+        <span><i style="background:#fbbf24"></i>缺失</span>
+        <span><i style="background:#fb7185"></i>冲突或触禁</span>
+        <span><i style="background:#22d3ee"></i>可回溯引用</span>
+      </p>
+    </section>
+
+    <section id="score" aria-labelledby="score-title">
+      <div class="section-head">
+        <div>
+          <p class="kicker">03 · Scorecard</p>
+          <h2 id="score-title">记分牌与偏好</h2>
+          <p>左边是这条代表探针的自动裁判。右边的 Elo 只来自本任务的盲测票：8 张预写种子票，加上你存在本地的票。它不改写三日回归集。</p>
+        </div>
+      </div>
+      <div class="score-layout">
+        <article class="card card-pad" id="scorecard"></article>
+        <article class="card card-pad" id="arena"></article>
+      </div>
+    </section>
+
+    <section id="timeline" aria-labelledby="timeline-title">
+      <div class="section-head">
+        <div>
+          <p class="kicker">04 · D0 → D2</p>
+          <h2 id="timeline-title">三日迭代</h2>
+          <p id="timeline-intro"></p>
+        </div>
+        <div class="day-switch" id="day-switch" role="group" aria-label="迭代日"></div>
+      </div>
+      <div class="card card-pad" id="timeline-panel"></div>
+    </section>
+
+    <section id="decision" aria-labelledby="decision-title">
+      <div class="section-head">
+        <div>
+          <p class="kicker">05 · Decision</p>
+          <h2 id="decision-title">产品决策</h2>
+          <p>评测台服务一个决定：哪一种架构可以接到哪一类广告任务上，以及什么情况下必须停。指标为这个决定服务，不为模型排行榜服务。</p>
+        </div>
+      </div>
+
+      <div class="decision-grid">
+        <article class="card card-pad">
+          <h3>北极星是可投放资产，不是文案分</h3>
+          <p>一条广告没有唯一正确答案，BLEU、和参考文案的相似度、模型自评都不适合当主指标。可投放指同时满足三件事：政策没有 major / veto，事实槽位没有幻觉，引用覆盖不低于 0.8。偏好用来打破剩余平局，不能把已经违规的稿子投回去。</p>
+          <p class="fine">代表探针让你读完一条完整输出。种子票只代表这条探针上的盲测。D0–D2 的通过率和成本来自 48 条回归集。三层证据不互相冒充。</p>
+          <h3>不放进主指标的东西</h3>
+          <ul>
+            <li>单次调用价格。基线最便宜，可投放成本最高。</li>
+            <li>历史 CTR。筛选任务里它会把医疗素材抬到第一。</li>
+            <li>模型自己打的「质量分」。它与政策否决不在一个量纲。</li>
+          </ul>
+          <h3>上线用字典序</h3>
+          <ol class="stack">
+            <li><span class="n">1</span><span><strong>政策。</strong> veto 直接杀死该条；major 不得自动投放。偏好分不能覆盖这一层。</span></li>
+            <li><span class="n">2</span><span><strong>事实槽位。</strong> 价格、产地、成分、规格、优惠、品类必须和 active 文档一致。过期和草稿文档算未接地。</span></li>
+            <li><span class="n">3</span><span><strong>引用。</strong> 生成类主张要能点回文档。没有引用的正确句子仍然不能自动投放。</span></li>
+            <li><span class="n">4</span><span><strong>人的偏好。</strong> 盲测，三角色分开记。只在前三层都过的候选之间比较。</span></li>
+            <li><span class="n">5</span><span><strong>成本与延迟。</strong> 比较的是单条可投放成本，以及 p95 是否还在实时链路里。</span></li>
+          </ol>
+        </article>
+
+        <article class="card card-pad">
+          <h3>Kill criteria</h3>
+          <div class="scroll-x">
+            <table class="sheet">
+              <thead>
+                <tr><th>编号</th><th>条件</th><th>触发后</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>K1</td><td>医疗功效、绝对化疗效、虚构社会证明漏出</td><td>该条否决，不进入偏好讨论</td></tr>
+                <tr><td>K2</td><td>事实幻觉率 &gt; 5%</td><td>该架构不能自动投放</td></tr>
+                <tr><td>K3</td><td>会花预算或涉及合规 / 多语言的任务，政策自动通过 &lt; 95%</td><td>不得自动投放</td></tr>
+                <tr><td>K4</td><td>p95 延迟 &gt; 8000ms</td><td>退出实时链路，可留在离线</td></tr>
+                <tr><td>K5</td><td>单条可投放成本 &gt; ¥0.08</td><td>降级或缩小调用，不靠「单次更便宜」过关</td></tr>
+                <tr><td>K6</td><td>对基线盲测胜率 &lt; 55%，且有效票 n ≥ 200</td><td>停止给该架构加功能</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="fine">K6 在这个演示里只展示规则。种子票每个任务 8 张，远小于 200，不能用来宣布架构胜出。界面上的胜率会带一个很宽的提醒。</p>
+        </article>
+      </div>
+
+      <div class="decision-grid" style="margin-top:14px">
+        <article class="card card-pad">
+          <h3>人机裁判怎么分工</h3>
+          <div class="scroll-x">
+            <table class="sheet">
+              <thead>
+                <tr><th>裁判</th><th>负责</th><th>不负责</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>引用对齐器</td>
+                  <td>主张能否映射到存在的文档，且 status 为 active</td>
+                  <td>语气像不像品牌</td>
+                </tr>
+                <tr>
+                  <td>政策规则</td>
+                  <td>绝对化、医疗功效、虚假价格、竞品贬损、过期权益、虚构评价</td>
+                  <td>钩子好不好看</td>
+                </tr>
+                <tr>
+                  <td>槽位检查</td>
+                  <td>产地、价格、成分、CTA、必要声明是否齐全</td>
+                  <td>文案节奏</td>
+                </tr>
+                <tr>
+                  <td>术语表</td>
+                  <td>英日术语和货币是否落在词表内</td>
+                  <td>译文是否有文学性</td>
+                </tr>
+                <tr>
+                  <td>投放优化师</td>
+                  <td>盲测里钩子、受众、CTA 是否像会停下的人</td>
+                  <td>不能推翻 veto</td>
+                </tr>
+                <tr>
+                  <td>品牌审核</td>
+                  <td>是否像北境、星轨、青禾，而不是通用生成腔</td>
+                  <td>不能用「更好看」放行草稿价</td>
+                </tr>
+                <tr>
+                  <td>合规官</td>
+                  <td>一票否决。只判断是否越界</td>
+                  <td>不打文采分</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p>分析台看得见架构名称，方便归因。竞技场默认写成方案甲 / 方案乙，避免「多步一定更好」的光环。投票可以选择角色。三角色不一致是正常的：投放优化师会为更短的钩子投票，合规官会为更长的声明投票。不一致时走字典序，不做平均分。</p>
+          <p class="fine">自动裁判挡硬伤，人处理品牌语气、文化得体和灰色表达。自动失败的稿子不进人审队列，避免把人的时间花在已经越界的内容上。低置信但政策通过的稿子双人抽检。护肤类在自动通过之后仍然保留更高抽检比例。</p>
+        </article>
+        <article class="card card-pad">
+          <h3>分流与降级</h3>
+          <div class="scroll-x">
+            <table class="sheet" id="shipping-table">
+              <thead>
+                <tr><th>任务</th><th>架构</th><th>上线方式</th><th>原因</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <h3>延迟失守时</h3>
+          <p>若多步检索的 p95 连续处于 8 秒以上：素材筛选可以降到工具增强，但候选必须先被政策工具去掉 veto 和 major，工具增强只排序、不放行。生成类改为排队，不降级到基线。基线只保留在回归集。</p>
+          <h3>多语言为什么不换架构</h3>
+          <p>D2 的短板集中在术语表没覆盖的译法和 CTA 模板，不是规划回路本身失效。杀掉整套多步检索，会把已经过线的获客和合规一起退回去。正确动作是补词表、把订阅模板从提示里删掉，并把这一子集留在人审后投放，直到政策通过率过 95%、幻觉低于 5%。</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>北境咖啡、星轨耳机、青禾护肤都是虚构品牌，与任何在营商品无关。页面里的通过率、Elo 和成本是为了讲清评测设计的确定性样本，不是媒体平台的真实消耗，也不是某个模型的官方分数。</p>
+      <p>本地快捷键：按 1–4 切换任务。投票保存在这台浏览器的 localStorage，导出 CSV 会带上它们。用 <code>python -m http.server</code> 打开即可，见 README。</p>
+      <p><a href="LICENSE">MIT License</a> · HenryHwang-AI</p>
+    </div>
+  </footer>
+
+  <dialog id="kb-dialog" aria-labelledby="kb-title">
+    <div class="dialog-body">
+      <p class="eyebrow" id="kb-brand"></p>
+      <h3 id="kb-title"></h3>
+      <p id="kb-status"></p>
+      <p id="kb-text"></p>
+      <button class="btn" id="kb-close" type="button">关闭</button>
+    </div>
+  </dialog>
+  <div id="toast" role="status"></div>
+  <noscript class="noscript">需要启用 JavaScript。数据仍在本地的 data.js 里，不会请求模型接口。</noscript>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
